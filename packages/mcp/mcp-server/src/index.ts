@@ -80,10 +80,20 @@ export class McpServerService extends Service {
       return { tools }
     })
 
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    this.server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
       const { name, arguments: args } = request.params
       const callId = CallId(`mcp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
       const controller = new AbortController()
+
+      if (extra?.signal) {
+        if (extra.signal.aborted) {
+          controller.abort(extra.signal.reason)
+        } else {
+          extra.signal.addEventListener('abort', () => {
+            controller.abort(extra.signal.reason)
+          }, { once: true })
+        }
+      }
 
       if (name === 'run_harness_task') {
         const taskText = String((args as Record<string, unknown>)?.task ?? '')
@@ -136,6 +146,12 @@ export class McpServerService extends Service {
 
   async startStdio(): Promise<void> {
     const transport = new StdioServerTransport()
+    transport.onclose = () => {
+      process.exit(0)
+    }
+    transport.onerror = (err) => {
+      console.error('MCP StdioServerTransport error:', err)
+    }
     await this.server.connect(transport)
   }
 }

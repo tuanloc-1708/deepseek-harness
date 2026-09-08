@@ -57,4 +57,57 @@ describe('dsh-mcp-server', () => {
     expect(callResult.content).toHaveLength(1)
     expect(callResult.content[0]).toEqual({ type: 'text', text: 'Result: 30' })
   })
+
+  it('forwards client abort signal to tool execution', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(ToolRuntime)
+    await ctx.plugin(McpServerService, { name: 'test-mcp-server', version: '1.0.0' })
+
+    let signalAborted = false
+    ctx.tools.register(
+      defineTool({
+        name: 'long_running_task',
+        description: 'Long running task',
+        parameters: {},
+        output: {
+          schema: { type: 'json' },
+          render: (_args, val) => [{ type: 'text', text: String(val) }],
+        },
+        execute: async (_args, meta) => {
+          return new Promise((_resolve, reject) => {
+            if (meta.signal?.aborted) {
+              signalAborted = true
+              reject(new Error('Aborted'))
+              return
+            }
+            meta.signal?.addEventListener('abort', () => {
+              signalAborted = true
+              reject(new Error('Aborted'))
+            })
+          })
+        },
+      }),
+    )
+
+    const mcpService = ctx.get('mcpServer') as McpServerService
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
+
+    const client = new Client({ name: 'test-client', version: '1.0.0' })
+    await mcpService.server.connect(serverTransport)
+    await client.connect(clientTransport)
+
+    const controller = new AbortController()
+    const callPromise = client.callTool(
+      { name: 'long_running_task', arguments: {} },
+      undefined,
+      { signal: controller.signal },
+    )
+
+    await new Promise(resolve => setTimeout(resolve, 20))
+    controller.abort()
+    await expect(callPromise).rejects.toThrow()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(signalAborted).toBe(true)
+  })
 })
