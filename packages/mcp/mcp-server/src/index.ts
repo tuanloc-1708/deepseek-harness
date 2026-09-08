@@ -9,7 +9,7 @@ import z from '@deepseek-ai/schemastery'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-tools'
 
 declare module '@deepseek-ai/cordis' {
@@ -82,7 +82,7 @@ export class McpServerService extends Service {
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
       const { name, arguments: args } = request.params
-      const callId = CallId(`mcp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
+      const callId = ToolCallId(`mcp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
       const controller = new AbortController()
 
       if (extra?.signal) {
