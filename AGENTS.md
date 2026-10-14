@@ -1,5 +1,24 @@
 # AGENTS.md
 
+## ⚡ WORKFLOW PROTOCOL (MULTI-SESSION & DIRECT EXECUTION OPTIMIZED)
+
+To maximize performance, prevent concurrency stalls, and support multiple simultaneous sessions smoothly:
+
+### 1. Direct In-Session Execution (Default)
+- For regular tasks, edits, bugfixes, research, and tests, the primary agent executes **directly in the current session** using workspace tools (`view_file`, `replace_file_content`, `run_command`, etc.).
+- Strictly adhere to DeepSeek Harness engineering principles: Cordis service architecture, strict TypeScript types, package invariants, and Vitest verification.
+- **Do NOT spawn subagents** (`define_subagent` / `invoke_subagent`) for routine tasks. In multi-session environments, spawning subagents per turn consumes excessive tokens and exhausts API rate limits, stalling concurrent progress.
+
+### 2. Selective SubAgent Delegation (On-Demand Only)
+- Delegate to subagents ONLY when:
+  - The user explicitly requests a subagent or background task (e.g. "dùng subagent", "chạy nền", "spawn subagent").
+  - The task requires isolated parallel background execution.
+
+### 3. DeepSeek Harness MCP Engine
+- Use `call_mcp_tool` (`deepseek-harness` -> `run_harness_task`) to analyze complex tasks or retrieve specialized architectural guidelines whenever needed. By default, it returns Direct Execution directives.
+
+---
+
 DeepSeek Harness is an all-plugin Cordis agent harness. Read [docs/architecture.md](docs/architecture.md) before changing `packages/`; follow [docs/AGENTS.md](docs/AGENTS.md) for documentation.
 
 ## Pre-stable APIs and released Session data

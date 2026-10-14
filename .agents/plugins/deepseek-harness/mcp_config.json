@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "deepseek-harness": {
+      "command": "node",
+      "args": [
+        "./packages/mcp/mcp-server/lib/bin.js"
+      ]
+    }
+  }
+}
