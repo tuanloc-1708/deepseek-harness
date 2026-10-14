@@ -23,21 +23,17 @@ describe('dsh-mcp-server', () => {
         },
         output: {
           schema: { type: 'json' },
-          render: (_args, val) => [{ type: 'text', text: `Result: ${val}` }],
+          render: (_args, val) => [{ type: 'text', text: `Result: ${JSON.stringify(val)}` }],
         },
-        execute: async (args) => {
-          const sum = Number(args.a) + Number(args.b)
-          return sum
-        },
+        execute: args => Promise.resolve(args.a + args.b),
       }),
     )
 
     // Connect MCP client via InMemoryTransport
-    const mcpService = ctx.get('mcpServer')!
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
 
     const client = new Client({ name: 'test-client', version: '1.0.0' })
-    await mcpService.server.connect(serverTransport)
+    await ctx.mcpServer.server.connect(serverTransport)
     await client.connect(clientTransport)
 
     // 1. Assert tool listing includes both registered tool and run_harness_task
@@ -73,7 +69,7 @@ describe('dsh-mcp-server', () => {
         parameters: {},
         output: {
           schema: { type: 'json' },
-          render: (_args, val) => [{ type: 'text', text: String(val) }],
+          render: (_args, val) => [{ type: 'text', text: JSON.stringify(val) }],
         },
         execute: async (_args, meta) => {
           return new Promise((_resolve, reject) => {
@@ -91,11 +87,10 @@ describe('dsh-mcp-server', () => {
       }),
     )
 
-    const mcpService = ctx.get('mcpServer')!
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
 
     const client = new Client({ name: 'test-client', version: '1.0.0' })
-    await mcpService.server.connect(serverTransport)
+    await ctx.mcpServer.server.connect(serverTransport)
     await client.connect(clientTransport)
 
     const controller = new AbortController()
@@ -117,11 +112,10 @@ describe('dsh-mcp-server', () => {
     await ctx.plugin(ToolRuntime)
     await ctx.plugin(McpServerService, { name: 'test-mcp-server', version: '1.0.0' })
 
-    const mcpService = ctx.get('mcpServer')!
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
 
     const client = new Client({ name: 'test-client', version: '1.0.0' })
-    await mcpService.server.connect(serverTransport)
+    await ctx.mcpServer.server.connect(serverTransport)
     await client.connect(clientTransport)
 
     // Call run_harness_task for a bugfix task

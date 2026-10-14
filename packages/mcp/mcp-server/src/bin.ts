@@ -39,5 +39,4 @@ await ctx.plugin(McpServerService, {
   version: '0.2.1-alpha.3',
 })
 
-const mcpService = ctx.get('mcpServer')!
-await mcpService.startStdio()
+await ctx.mcpServer.startStdio()

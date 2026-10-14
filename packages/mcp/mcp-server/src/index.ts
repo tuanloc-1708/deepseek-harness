@@ -6,7 +6,7 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { Server, type Tool } from '@modelcontextprotocol/server'
+import { McpServer, type Tool } from '@modelcontextprotocol/server'
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-tools'
@@ -64,7 +64,7 @@ const RUN_HARNESS_TASK_TOOL: Tool = {
 }
 
 /**
- * Cordis service that bridges `ctx.tools` and `run_harness_task` onto an MCP `Server`.
+ * Cordis service that bridges `ctx.tools` and `run_harness_task` onto an MCP `McpServer`.
  */
 export class McpServerService extends Service {
   static readonly inject = ['tools']
@@ -74,7 +74,8 @@ export class McpServerService extends Service {
     version: z.string().default('0.2.1-alpha.3'),
   })
 
-  readonly server: Server
+  /** Underlying MCP server instance. */
+  readonly server: McpServer
   private callSeq = 0
 
   constructor(ctx: Context, config: Config = {}) {
@@ -83,7 +84,7 @@ export class McpServerService extends Service {
     const serverName = config.name ?? 'deepseek-harness'
     const serverVersion = config.version ?? '0.2.1-alpha.3'
 
-    this.server = new Server(
+    this.server = new McpServer(
       { name: serverName, version: serverVersion },
       { capabilities: { tools: { listChanged: true } } },
     )
@@ -92,12 +93,12 @@ export class McpServerService extends Service {
   }
 
   private setupHandlers(): void {
-    this.server.setRequestHandler('tools/list', async () => {
+    this.server.server.setRequestHandler('tools/list', () => {
       const schemas = this.ctx.tools.schemas()
       const tools: Tool[] = schemas.map(s => ({
         name: s.name,
         description: s.description,
-        inputSchema: (s.parameters as Tool['inputSchema']) ?? { type: 'object' },
+        inputSchema: s.parameters as Tool['inputSchema'],
       }))
 
       // Always expose run_harness_task unless overridden by a registered tool of the same name
@@ -108,7 +109,7 @@ export class McpServerService extends Service {
       return { tools }
     })
 
-    this.server.setRequestHandler('tools/call', async (request, context) => {
+    this.server.server.setRequestHandler('tools/call', async (request, context) => {
       const { name: toolName, arguments: rawArgs } = request.params
       const args: Record<string, unknown> = isRecord(rawArgs) ? rawArgs : {}
 
@@ -134,16 +135,14 @@ export class McpServerService extends Service {
 
       const callId = ToolCallId(`mcp-${Date.now()}-${++this.callSeq}`)
       const controller = new AbortController()
-      const requestSignal = context?.mcpReq?.signal
+      const requestSignal = context.mcpReq.signal
 
-      if (requestSignal) {
-        if (requestSignal.aborted) {
+      if (requestSignal.aborted) {
+        controller.abort(requestSignal.reason)
+      } else {
+        requestSignal.addEventListener('abort', () => {
           controller.abort(requestSignal.reason)
-        } else {
-          requestSignal.addEventListener('abort', () => {
-            controller.abort(requestSignal.reason)
-          }, { once: true })
-        }
+        }, { once: true })
       }
 
       const result = await this.ctx.tools.execute({
@@ -165,7 +164,7 @@ export class McpServerService extends Service {
 
       const contentBlocks: Array<{ type: 'text'; text: string }> = []
 
-      if (result.content && result.content.length > 0) {
+      if (result.content.length > 0) {
         for (const block of result.content) {
           if (block.type === 'text') {
             contentBlocks.push({ type: 'text', text: block.text })
@@ -173,11 +172,9 @@ export class McpServerService extends Service {
             contentBlocks.push({ type: 'text', text: JSON.stringify(block) })
           }
         }
-      } else if (result.value !== undefined) {
+      } else {
         const text = typeof result.value === 'string' ? result.value : JSON.stringify(result.value, null, 2)
         contentBlocks.push({ type: 'text', text })
-      } else {
-        contentBlocks.push({ type: 'text', text: 'Success' })
       }
 
       return {
@@ -190,6 +187,7 @@ export class McpServerService extends Service {
   /**
    * Connect the MCP server to a `StdioServerTransport` over process stdin/stdout.
    * Automatically exits when the client closes stdin or the transport terminates.
+   * @returns Promise that resolves once the stdio transport is connected.
    */
   async startStdio(): Promise<void> {
     const transport = new StdioServerTransport()
